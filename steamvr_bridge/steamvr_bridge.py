@@ -5,11 +5,14 @@ Modified from the example code at https://github.com/cmbruns/pyopenxr_examples/b
 import platform
 import xr
 
-from .vive_controller import ViveController
+from . import Quest3Controller
 
 if platform.system() == "Windows":
     import ctypes.wintypes
     from .windows_performance_counter import WindowsPerformanceCounter as PerformanceCounter
+elif platform.system() == "Darwin":
+    import ctypes
+    from .mac_performance_counter import MacPerformanceCounter as PerformanceCounter
 else:
     import ctypes
     from .linux_performance_counter import LinuxPerformanceCounter as PerformanceCounter
@@ -20,6 +23,7 @@ class SteamVrBridge:
     This class creates a headless OpenXR extension that communicates with SteamVR and retrieves
     the state of the headset and controllers.
     """
+
     def __init__(self):
         # enumerate the required instance extensions
         extensions = [xr.MND_HEADLESS_EXTENSION_NAME]  # Permits use without a graphics display
@@ -27,7 +31,8 @@ class SteamVrBridge:
         # tracking controllers in headless mode requires a way to get the current XrTime
         if platform.system() == "Windows":
             extensions.append(xr.KHR_WIN32_CONVERT_PERFORMANCE_COUNTER_TIME_EXTENSION_NAME)
-        else:  # Linux
+        else:
+            # Linux and macOS use timespec
             extensions.append(xr.KHR_CONVERT_TIMESPEC_TIME_EXTENSION_NAME)
 
         # create instance for headless use
@@ -57,8 +62,8 @@ class SteamVrBridge:
             ),
         )
 
-        self.left_controller = ViveController(self.instance, "Left", "/user/hand/left")
-        self.right_controller = ViveController(self.instance, "Right", "/user/hand/right")
+        self.left_controller = Quest3Controller(self.instance, "Left", "/user/hand/left")
+        self.right_controller = Quest3Controller(self.instance, "Right", "/user/hand/right")
 
         self.controllers = [
             self.left_controller,
@@ -70,7 +75,7 @@ class SteamVrBridge:
         for controller in self.controllers:
             suggested_bindings.extend(controller.register(self.action_set, self.session))
 
-        vive_bindings = (xr.ActionSuggestedBinding * len(suggested_bindings))(
+        quest3_bindings = (xr.ActionSuggestedBinding * len(suggested_bindings))(
             *suggested_bindings
         )
 
@@ -79,10 +84,11 @@ class SteamVrBridge:
             suggested_bindings=xr.InteractionProfileSuggestedBinding(
                 interaction_profile=xr.string_to_path(
                     self.instance,
-                    "/interaction_profiles/htc/vive_controller",
+                    # "/interaction_profiles/htc/vive_controller",
+                    "/interaction_profiles/oculus/touch_controller",
                 ),
-                count_suggested_bindings=len(vive_bindings),
-                suggested_bindings=vive_bindings,
+                count_suggested_bindings=len(quest3_bindings),
+                suggested_bindings=quest3_bindings,
             ),
         )
         xr.attach_session_action_sets(

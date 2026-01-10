@@ -1,15 +1,23 @@
+import platform
 import time
 
 from scipy.spatial.transform import Rotation
 import numpy as np
 from cc.udp import UDP
-from steamvr_bridge import SteamVrBridge
+# from steamvr_bridge import SteamVrBridge
 
 
 if __name__ == "__main__":
-    bridge = SteamVrBridge()
+    if platform.system() == "Darwin":
+        from steamvr_bridge.webxr_bridge import WebXrBridge
+        bridge = WebXrBridge()
+        print("Using WebXR Bridge on macOS")
+    else:
+        from steamvr_bridge.steamvr_bridge import SteamVrBridge
+        bridge = SteamVrBridge()
+        print("Using SteamVR Bridge on non-macOS")
 
-    udp = UDP(recv_addr=("0.0.0.0", 11005), send_addr=("172.28.0.5", 11005))
+    udp = UDP(recv_addr=("0.0.0.0", 11005), send_addr=("192.168.1.230", 11005))
 
     controller_states = {
         "left": {
@@ -25,9 +33,14 @@ if __name__ == "__main__":
     }
 
     while True:
+        # CRITICAL FIX: Limit loop rate to approx 100Hz to prevent network buffer overflow
+        # and allow the WebXR background thread to process data.
+        time.sleep(1./30.0)
+
         bridge.update()
 
         # Create rotation matrix
+        # ...existing code...
         left_rot_matrix = np.eye(4)
         left_rot_matrix[:3, :3] = Rotation.from_quat(np.array([
             bridge.left_controller.orientation.w,
@@ -52,6 +65,7 @@ if __name__ == "__main__":
         controller_states["left"]["trigger"] = bridge.left_controller.trigger
         controller_states["right"]["trigger"] = bridge.right_controller.trigger
 
-        print(f"{time.time():.2f}", controller_states["left"]["button_pressed"], controller_states["left"]["trigger"], controller_states["right"]["button_pressed"], controller_states["right"]["trigger"])
+        print(f"{time.time():.2f}", controller_states["left"]["button_pressed"], controller_states["left"]
+              ["trigger"], controller_states["right"]["button_pressed"], controller_states["right"]["trigger"])
 
         udp.send_dict(controller_states)
