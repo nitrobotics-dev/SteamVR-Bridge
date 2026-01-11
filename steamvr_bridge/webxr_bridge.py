@@ -23,9 +23,9 @@ HTML_CLIENT = """
     </style>
 </head>
 <body>
-    <h1>Mac WebXR Bridge (Binary v8)</h1>
-    <p>Please REFRESH this page if you don't see (v8)</p>
-    <button onclick="activateXR()">ENTER VR</button>
+    <h1>Mac WebXR Bridge (Binary v9 - AR)</h1>
+    <p>Please REFRESH this page if you don't see (v9)</p>
+    <button onclick="activateXR()">ENTER AR/VR</button>
     <div id="status">Waiting...</div>
     <div id="log"></div>
     <canvas id="xr-canvas" style="display:none;"></canvas>
@@ -54,20 +54,31 @@ ws.onopen = () => { document.getElementById('status').innerText = "Connected (Bi
 async function activateXR() {
   if (!navigator.xr) { remoteLog("WebXR not found"); return; }
   try {
-    const isSupported = await navigator.xr.isSessionSupported('immersive-vr');
-    if (!isSupported) { remoteLog("immersive-vr NOT supported."); return; }
+    // CHECK FOR AR (Pass-through) SUPPORT
+    const arSupported = await navigator.xr.isSessionSupported('immersive-ar');
+    const mode = arSupported ? 'immersive-ar' : 'immersive-vr';
+    
+    if (!arSupported) {
+        const vrSupported = await navigator.xr.isSessionSupported('immersive-vr');
+        if (!vrSupported) { remoteLog("XR NOT supported."); return; }
+    }
 
     let canvas = document.getElementById('xr-canvas');
     gl = canvas.getContext('webgl', { xrCompatible: true });
 
-    xrSession = await navigator.xr.requestSession('immersive-vr', { requiredFeatures: ['local-floor'] });
+    // Request AR if possible, otherwise VR
+    xrSession = await navigator.xr.requestSession(mode, { requiredFeatures: ['local-floor'] });
     xrSession.updateRenderState({ baseLayer: new XRWebGLLayer(xrSession, gl) });
+    
+    // IMPORTANT: Clear to TRANSPARENT for Passthrough
+    gl.clearColor(0.0, 0.0, 0.0, 0.0);
+    
     xrSession.addEventListener('end', () => remoteLog("Session ENDED"));
     
     try { xrRefSpace = await xrSession.requestReferenceSpace('local-floor'); } 
     catch (e) { xrRefSpace = await xrSession.requestReferenceSpace('viewer'); }
 
-    remoteLog("Starting Binary Loop...");
+    remoteLog("Starting Binary Loop (" + mode + ")...");
     xrSession.requestAnimationFrame(onXRFrame);
   } catch(e) { remoteLog("Error: " + e); }
 }
@@ -80,6 +91,8 @@ function onXRFrame(time, frame) {
 
   let glLayer = session.renderState.baseLayer;
   gl.bindFramebuffer(gl.FRAMEBUFFER, glLayer.framebuffer);
+  
+  // Clear buffer to transparent (reveals real world in AR mode)
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
   let pose = frame.getViewerPose(xrRefSpace);
@@ -97,7 +110,7 @@ function onXRFrame(time, frame) {
         if (!source.gripSpace) continue;
         let offset = (source.handedness === 'left') ? 7 : 17;
         
-        // Mark Active simply because the controller exists in the list
+        // Mark Active
         sendBuffer[offset] = 1.0; 
 
         let gripPose = frame.getPose(source.gripSpace, xrRefSpace);
